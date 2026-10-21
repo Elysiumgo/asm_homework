@@ -1,0 +1,55 @@
+.MODEL SMALL
+.STACK 100H
+.CODE
+START:
+    MOV AX,@DATA
+    MOV DS,AX
+
+    XOR AX,AX              ; AX holds the running sum
+    MOV BX,1
+SUM_LOOP:
+    ADD AX,BX
+    INC BX
+    CMP BX,100
+    JBE SUM_LOOP
+
+    CALL PRINT_NUM         ; AX = 5050
+    CALL NEW_LINE
+    MOV AX,4C00H
+    INT 21H
+
+PRINT_NUM PROC NEAR
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    XOR CX,CX
+    MOV BX,10
+DIVIDE:
+    XOR DX,DX
+    DIV BX
+    PUSH DX
+    INC CX
+    OR AX,AX
+    JNZ DIVIDE
+PRINT_DIGIT:
+    POP DX
+    ADD DL,'0'
+    MOV AH,02H
+    INT 21H
+    LOOP PRINT_DIGIT
+    POP DX
+    POP CX
+    POP BX
+    RET
+PRINT_NUM ENDP
+
+NEW_LINE PROC NEAR
+    MOV DL,0DH
+    MOV AH,02H
+    INT 21H
+    MOV DL,0AH
+    MOV AH,02H
+    INT 21H
+    RET
+NEW_LINE ENDP
+END START
