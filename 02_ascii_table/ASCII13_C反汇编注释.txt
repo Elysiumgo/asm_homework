@@ -1,0 +1,66 @@
+﻿作业2 C 程序实际反汇编与注释
+源文件：ASCII13.C；目标文件：ASCII13.EXE（Windows x64）
+编译器：GCC 15.2.0；编译选项：-x c -std=c11 -Wall -Wextra -O0 -g
+提取命令：objdump -d -M intel --disassemble=main ASCII13.EXE
+说明：以下来自实际生成的 EXE；地址可能随编译环境变化。该 EXE 不在 DOSBox 中运行。
+
+
+ASCII13.EXE:     file format pei-x86-64
+
+
+Disassembly of section .text:
+
+0000000140001490 <main>:
+   140001490:	55                   	push   rbp  ; 建立 main 的栈帧。
+   140001491:	48 89 e5             	mov    rbp,rsp
+   140001494:	48 83 ec 30          	sub    rsp,0x30
+   140001498:	e8 43 01 00 00       	call   1400015e0 <__main>
+   14000149d:	c7 45 fc 00 00 00 00 	mov    DWORD PTR [rbp-0x4],0x0  ; row = 0；[rbp-0x4] 保存外层循环变量。
+   1400014a4:	eb 4e                	jmp    1400014f4 <main+0x64>
+   1400014a6:	c7 45 f8 00 00 00 00 	mov    DWORD PTR [rbp-0x8],0x0  ; col = 0；[rbp-0x8] 保存内层循环变量。
+   1400014ad:	eb 31                	jmp    1400014e0 <main+0x50>
+   1400014af:	8b 55 fc             	mov    edx,DWORD PTR [rbp-0x4]  ; 把 row 读入 EDX。
+   1400014b2:	89 d0                	mov    eax,edx
+   1400014b4:	01 c0                	add    eax,eax  ; 2×row。
+   1400014b6:	01 d0                	add    eax,edx  ; 3×row。
+   1400014b8:	c1 e0 02             	shl    eax,0x2  ; 12×row。
+   1400014bb:	01 d0                	add    eax,edx  ; 13×row。
+   1400014bd:	8d 50 61             	lea    edx,[rax+0x61]  ; 加 0x61，即字符 'a' 的 ASCII 码。
+   1400014c0:	8b 45 f8             	mov    eax,DWORD PTR [rbp-0x8]
+   1400014c3:	01 d0                	add    eax,edx  ; 加 col，得到 'a' + row×13 + col。
+   1400014c5:	89 c1                	mov    ecx,eax  ; Windows x64 调用约定：第一个整数参数放 ECX。
+   1400014c7:	e8 4c 14 00 00       	call   140002918 <putchar>  ; putchar：输出当前小写字母。
+   1400014cc:	83 7d f8 0b          	cmp    DWORD PTR [rbp-0x8],0xb  ; 比较 col 与 11；只在前 12 个字母后输出空格。
+   1400014d0:	7f 0a                	jg     1400014dc <main+0x4c>  ; 若 col > 11，跳过空格。
+   1400014d2:	b9 20 00 00 00       	mov    ecx,0x20  ; 0x20 是空格的 ASCII 码。
+   1400014d7:	e8 3c 14 00 00       	call   140002918 <putchar>  ; 输出空格。
+   1400014dc:	83 45 f8 01          	add    DWORD PTR [rbp-0x8],0x1  ; col++。
+   1400014e0:	83 7d f8 0c          	cmp    DWORD PTR [rbp-0x8],0xc  ; 比较 col 与 12。
+   1400014e4:	7e c9                	jle    1400014af <main+0x1f>  ; col <= 12 时继续内层循环，共输出 13 个字符。
+   1400014e6:	b9 0a 00 00 00       	mov    ecx,0xa  ; 0x0A 是换行符。
+   1400014eb:	e8 28 14 00 00       	call   140002918 <putchar>  ; 一行结束后输出换行。
+   1400014f0:	83 45 fc 01          	add    DWORD PTR [rbp-0x4],0x1  ; row++。
+   1400014f4:	83 7d fc 01          	cmp    DWORD PTR [rbp-0x4],0x1  ; 比较 row 与 1。
+   1400014f8:	7e ac                	jle    1400014a6 <main+0x16>  ; row <= 1 时继续外层循环，共输出两行。
+   1400014fa:	b8 00 00 00 00       	mov    eax,0x0  ; 返回值 0。
+   1400014ff:	48 83 c4 30          	add    rsp,0x30
+   140001503:	5d                   	pop    rbp
+   140001504:	c3                   	ret  ; main 返回。
+   140001505:	90                   	nop
+   140001506:	90                   	nop
+   140001507:	90                   	nop
+   140001508:	90                   	nop
+   140001509:	90                   	nop
+   14000150a:	90                   	nop
+   14000150b:	90                   	nop
+   14000150c:	90                   	nop
+   14000150d:	90                   	nop
+   14000150e:	90                   	nop
+   14000150f:	90                   	nop
+
+C 源码与机器指令的对应关系
+row / col 分别位于 [rbp-0x4] / [rbp-0x8]；编译器使用栈内存保存局部变量。
+13×row 通过两次 ADD 和一次 SHL 计算，再与 'a' 和 col 相加。
+内层和外层 for 循环分别由 CMP + JLE 控制；if (col < 12) 对应 CMP + JG。
+putchar 的参数通过 ECX 传递，CALL 完成字符输出。
+这份反汇编是 64 位 Windows 程序；两个 MASM 程序则是 16 位 DOS 程序。
