@@ -1,0 +1,70 @@
+﻿作业4 C 程序实际反汇编与注释
+源文件：MUL9.C；目标文件：MUL9_C.EXE（Windows x64）
+编译器：GCC 15.2.0；编译选项：-x c -std=c11 -Wall -Wextra -O0 -g
+提取命令：objdump -d -M intel --disassemble=print_item --disassemble=main MUL9_C.EXE
+说明：以下指令来自本次实际生成的 EXE，地址可能随编译器和选项变化。
+
+
+MUL9_C.EXE:     file format pei-x86-64
+
+
+Disassembly of section .text:
+
+0000000140001490 <print_item>:
+   140001490:	55                   	push   rbp
+   140001491:	48 89 e5             	mov    rbp,rsp
+   140001494:	48 83 ec 20          	sub    rsp,0x20
+   140001498:	89 4d 10             	mov    DWORD PTR [rbp+0x10],ecx  ; 保存第一个参数 row；Windows x64 的第一个整数参数由 ECX 传入。
+   14000149b:	89 55 18             	mov    DWORD PTR [rbp+0x18],edx  ; 保存第二个参数 column；第二个整数参数由 EDX 传入。
+   14000149e:	8b 45 10             	mov    eax,DWORD PTR [rbp+0x10]
+   1400014a1:	0f af 45 18          	imul   eax,DWORD PTR [rbp+0x18]  ; IMUL 计算 row * column。
+   1400014a5:	41 89 c0             	mov    r8d,eax
+   1400014a8:	8b 55 18             	mov    edx,DWORD PTR [rbp+0x18]
+   1400014ab:	8b 45 10             	mov    eax,DWORD PTR [rbp+0x10]
+   1400014ae:	48 8d 0d 4b 8b 00 00 	lea    rcx,[rip+0x8b4b]        # 14000a000 <.rdata>
+   1400014b5:	45 89 c1             	mov    r9d,r8d
+   1400014b8:	41 89 d0             	mov    r8d,edx
+   1400014bb:	89 c2                	mov    edx,eax
+   1400014bd:	e8 1e 13 00 00       	call   1400027e0 <__mingw_printf>  ; 调用 printf 输出 row*column=result。
+   1400014c2:	90                   	nop
+   1400014c3:	48 83 c4 20          	add    rsp,0x20
+   1400014c7:	5d                   	pop    rbp
+   1400014c8:	c3                   	ret  ; print_item 使用 RET 返回调用者。
+
+00000001400014c9 <main>:
+   1400014c9:	55                   	push   rbp
+   1400014ca:	48 89 e5             	mov    rbp,rsp
+   1400014cd:	48 83 ec 30          	sub    rsp,0x30
+   1400014d1:	e8 2a 01 00 00       	call   140001600 <__main>
+   1400014d6:	48 8d 05 2e 8b 00 00 	lea    rax,[rip+0x8b2e]        # 14000a00b <.rdata+0xb>
+   1400014dd:	48 89 c1             	mov    rcx,rax
+   1400014e0:	e8 13 76 00 00       	call   140008af8 <puts>  ; 调用 puts 输出标题。
+   1400014e5:	c7 45 fc 09 00 00 00 	mov    DWORD PTR [rbp-0x4],0x9  ; row = 9；外层循环从 9 开始。
+   1400014ec:	eb 30                	jmp    14000151e <main+0x55>
+   1400014ee:	c7 45 f8 01 00 00 00 	mov    DWORD PTR [rbp-0x8],0x1  ; column = 1；每行重新初始化内层循环。
+   1400014f5:	eb 11                	jmp    140001508 <main+0x3f>
+   1400014f7:	8b 55 f8             	mov    edx,DWORD PTR [rbp-0x8]  ; 将 column 放入 EDX，作为 print_item 的第二个参数。
+   1400014fa:	8b 45 fc             	mov    eax,DWORD PTR [rbp-0x4]  ; 读取 row。
+   1400014fd:	89 c1                	mov    ecx,eax  ; 将 row 放入 ECX，作为 print_item 的第一个参数。
+   1400014ff:	e8 8c ff ff ff       	call   140001490 <print_item>  ; CALL print_item；返回地址由 CALL 压栈，过程用 RET 返回。
+   140001504:	83 45 f8 01          	add    DWORD PTR [rbp-0x8],0x1  ; column++。
+   140001508:	8b 45 f8             	mov    eax,DWORD PTR [rbp-0x8]
+   14000150b:	3b 45 fc             	cmp    eax,DWORD PTR [rbp-0x4]  ; 比较 column 与 row。
+   14000150e:	7e e7                	jle    1400014f7 <main+0x2e>  ; column <= row 时继续内层循环。
+   140001510:	b9 0a 00 00 00       	mov    ecx,0xa
+   140001515:	e8 d6 75 00 00       	call   140008af0 <putchar>  ; 调用 putchar 输出换行。
+   14000151a:	83 6d fc 01          	sub    DWORD PTR [rbp-0x4],0x1  ; row--。
+   14000151e:	83 7d fc 00          	cmp    DWORD PTR [rbp-0x4],0x0  ; 比较 row 与 0。
+   140001522:	7f ca                	jg     1400014ee <main+0x25>  ; row > 0 时继续外层循环。
+   140001524:	b8 00 00 00 00       	mov    eax,0x0  ; main 返回 0。
+   140001529:	48 83 c4 30          	add    rsp,0x30
+   14000152d:	5d                   	pop    rbp
+   14000152e:	c3                   	ret
+   14000152f:	90                   	nop
+
+对应关系总结
+main 中 [rbp-0x4] 是 row，[rbp-0x8] 是 column。
+CMP + JLE 控制内层循环，CMP + JG 控制外层循环，构成双重循环。
+CALL print_item 对应 C 中的过程调用；print_item 末尾的 RET 返回 main。
+print_item 中的 IMUL 对应 row * column。
+该文件是 Windows x64 反汇编；MUL9.EXE 是 16 位 DOS 程序。
