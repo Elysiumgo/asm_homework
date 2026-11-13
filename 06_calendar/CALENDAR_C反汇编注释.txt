@@ -1,0 +1,131 @@
+作业6 C 程序实际反汇编与注释
+================================
+
+源文件：CALENDAR.C
+目标文件：CALENDAR_C.EXE（Windows x64）
+编译器：GCC 15.2.0
+编译选项：-x c -std=c11 -Wall -Wextra -O0 -g
+提取命令：objdump -d -M intel --disassemble=<过程名> CALENDAR_C.EXE
+说明：以下指令来自本次实际生成的 EXE，重新编译后地址可能变化。
+
+一、闰年判断 is_leap
+---------------------
+
+0000000140001490 <is_leap>:
+  140001494: 89 4d 10              mov DWORD PTR [rbp+0x10],ecx
+      Windows x64 调用约定把第一个整数参数 year 放在 ECX。
+  14000149d: 48 69 c0 1f85eb51     imul rax,rax,0x51eb851f
+  1400014a4: 48 c1 e8 20           shr rax,0x20
+  1400014b2: 69 c8 90010000        imul ecx,eax,0x190
+  1400014ba: 29 c8                 sub eax,ecx
+  1400014bc: 85 c0                 test eax,eax
+      编译器用乘法、移位和减法计算 year%400，避免直接使用慢速除法。
+  1400014c3: 83 e0 03              and eax,0x3
+  1400014c6: 85 c0                 test eax,eax
+      year%4 等价于检查最低两位是否为零。
+  1400014e5: 6b c8 64              imul ecx,eax,0x64
+  1400014ea: 29 c8                 sub eax,ecx
+  1400014ec: 85 c0                 test eax,eax
+      计算并检查 year%100。
+  1400014f0: b8 01000000           mov eax,0x1
+  1400014f7: b8 00000000           mov eax,0x0
+      返回 1 表示闰年，返回 0 表示平年。
+  1400014fd: c3                    ret
+
+二、月份天数 days_in_month
+--------------------------
+
+00000001400014fe <days_in_month>:
+  140001506: 89 4d 10              mov DWORD PTR [rbp+0x10],ecx
+  140001509: 89 55 18              mov DWORD PTR [rbp+0x18],edx
+      year 和 month 分别由 ECX、EDX 传入。
+  14000150f: 83 e8 01              sub eax,0x1
+  140001514: 48 8d 14 85 ...       lea rdx,[rax*4]
+  14000151c: 48 8d 05 ...          lea rax,[...month_days]
+  140001523: 8b 04 02              mov eax,DWORD PTR [rdx+rax]
+      month-1 作为下标，从全局数组 month_days 读取基本天数。
+  140001529: 83 7d 18 02           cmp DWORD PTR [rbp+0x18],0x2
+  140001534: e8 57 ff ff ff        call 140001490 <is_leap>
+  14000153d: 83 45 fc 01           add DWORD PTR [rbp-0x4],0x1
+      只有二月且为闰年时把天数加 1。
+  140001549: c3                    ret
+
+三、首日星期 first_weekday
+-------------------------
+
+000000014000154a <first_weekday>:
+  14000155b: c7 45 fc 01000000     mov DWORD PTR [rbp-0x4],0x1
+      weekday=1，因为 1900-01-01 是星期一。
+  140001562: c7 45 f8 6c070000     mov DWORD PTR [rbp-0x8],0x76c
+      current_year=1900。
+  140001576: e8 15 ff ff ff        call 140001490 <is_leap>
+  14000157b: 01 d8                 add eax,ebx
+      每经过一个平年偏移 1，闰年偏移 2。
+  1400015a9: 83 45 f8 01           add DWORD PTR [rbp-0x8],0x1
+  1400015b0: 3b 45 20              cmp eax,DWORD PTR [rbp+0x20]
+  1400015b3: 7c b6                 jl 14000156b
+      循环累加到目标年份之前。
+  1400015c6: e8 33 ff ff ff        call 1400014fe <days_in_month>
+      第二个循环累加目标月份之前各月的天数。
+  1400015fc: 83 45 f4 01           add DWORD PTR [rbp-0xc],0x1
+  140001603: 3b 45 28              cmp eax,DWORD PTR [rbp+0x28]
+  140001606: 7c b6                 jl 1400015be
+  140001608: 8b 45 fc              mov eax,DWORD PTR [rbp-0x4]
+      最终在 EAX 返回 0~6 的星期编号。
+  140001611: c3                    ret
+
+四、日历输出 print_calendar
+-------------------------
+
+0000000140001612 <print_calendar>:
+  14000161a: 89 4d 10              mov DWORD PTR [rbp+0x10],ecx
+  14000161d: 89 55 18              mov DWORD PTR [rbp+0x18],edx
+      保存 year 和 month。
+  140001628: e8 1d ff ff ff        call 14000154a <first_weekday>
+  140001638: e8 c1 fe ff ff        call 1400014fe <days_in_month>
+      分别取得首日星期和本月天数。
+  140001650: 48 8d 05 ...          lea rax,[...month_names]
+  140001657: 48 8b 14 02           mov rdx,QWORD PTR [rdx+rax]
+      从 month_names 指针数组选择月份英文名称。
+  14000169d: 3b 45 f0              cmp eax,DWORD PTR [rbp-0x10]
+  1400016a0: 7c e5                 jl 140001687
+      首日之前每列输出三个空格。
+  1400016b1: 8b 45 f8              mov eax,DWORD PTR [rbp-0x8]
+  1400016bd: e8 be 130000          call 140002a80 <__mingw_printf>
+      以宽度 2 输出日期。
+  1400016c6: 83 7d f4 07           cmp DWORD PTR [rbp-0xc],0x7
+  1400016d1: e8 22 fc0000          call 1400112f8 <putchar>
+      每到第 7 列输出换行并把列号清零。
+  1400016fc: 3b 45 ec              cmp eax,DWORD PTR [rbp-0x14]
+  1400016ff: 7e b0                 jle 1400016b1
+      日期不超过本月天数时继续循环。
+  140001708: c3                    ret
+
+五、主函数 main
+---------------
+
+0000000140001709 <main>:
+  140001733: e8 c8 130000          call 140002b00 <__mingw_scanf>
+  140001738: 83 f8 01              cmp eax,0x1
+  140001740: 3d 6b070000           cmp eax,0x76b
+  14000174a: 3d 33080000           cmp eax,0x833
+      检查年份输入成功且处于 1900~2099。
+  140001784: e8 77 130000          call 140002b00 <__mingw_scanf>
+  140001791: 85 c0                 test eax,eax
+  140001798: 83 f8 0c              cmp eax,0xc
+      检查月份处于 1~12。
+  1400017b3: 8b 55 f8              mov edx,DWORD PTR [rbp-0x8]
+  1400017b6: 8b 45 fc              mov eax,DWORD PTR [rbp-0x4]
+  1400017b9: 89 c1                 mov ecx,eax
+  1400017bb: e8 52 feffff          call 140001612 <print_calendar>
+      month 放入 EDX、year 放入 ECX，调用日历输出过程。
+  1400017ca: c3                    ret
+
+总结
+----
+
+1. C 版使用 ECX、EDX 传递前两个整数参数；汇编作业版还演示了栈和数据段传参。
+2. CALL/RET 对应 C 中的过程调用；循环由 CMP 配合条件跳转构成。
+3. 编译器会把固定除数的取模运算优化为乘法和移位。
+4. 全局月份表位于数据区，局部循环变量位于各过程的栈帧中。
+5. 本文件是 Windows x64 反汇编；CALENDAR.EXE 是 16 位 DOS、多代码段程序。

@@ -1,0 +1,405 @@
+STACK_SEG SEGMENT PARA STACK 'STACK'
+    DB 1024 DUP(?)
+STACK_SEG ENDS
+
+DATA_SEG SEGMENT PARA PUBLIC 'DATA'
+PROMPT_YEAR  DB 'Please input year (1900-2099): $'
+PROMPT_MONTH DB 'Please input month (1-12): $'
+ERROR_YEAR   DB 0DH,0AH,'Invalid year. Please enter 1900-2099.',0DH,0AH,'$'
+ERROR_MONTH  DB 0DH,0AH,'Invalid month. Please enter 1-12.',0DH,0AH,'$'
+WEEK_HEADER  DB 'Su Mo Tu We Th Fr Sa',0DH,0AH,'$'
+
+MONTH_JAN DB 'January$'
+MONTH_FEB DB 'February$'
+MONTH_MAR DB 'March$'
+MONTH_APR DB 'April$'
+MONTH_MAY DB 'May$'
+MONTH_JUN DB 'June$'
+MONTH_JUL DB 'July$'
+MONTH_AUG DB 'August$'
+MONTH_SEP DB 'September$'
+MONTH_OCT DB 'October$'
+MONTH_NOV DB 'November$'
+MONTH_DEC DB 'December$'
+MONTH_PTRS DW OFFSET MONTH_JAN,OFFSET MONTH_FEB,OFFSET MONTH_MAR
+           DW OFFSET MONTH_APR,OFFSET MONTH_MAY,OFFSET MONTH_JUN
+           DW OFFSET MONTH_JUL,OFFSET MONTH_AUG,OFFSET MONTH_SEP
+           DW OFFSET MONTH_OCT,OFFSET MONTH_NOV,OFFSET MONTH_DEC
+DAYS_TABLE DB 31,28,31,30,31,30,31,31,30,31,30,31
+
+YEAR_VALUE    DW ?
+MONTH_VALUE   DW ?
+FIRST_DAY     DW ?
+DAYS_IN_MONTH DW ?
+DATA_SEG ENDS
+
+; Utility procedures live in a separate code segment.  Calls from MAIN_CODE
+; are FAR calls, so CALL pushes CS and IP and RETF restores both.
+UTIL_CODE SEGMENT PARA PUBLIC 'CODE'
+ASSUME CS:UTIL_CODE,DS:DATA_SEG
+
+PRINT_STRING PROC FAR
+    MOV AH,09H
+    INT 21H
+    RETF
+PRINT_STRING ENDP
+
+PRINT_CHAR PROC FAR
+    MOV AH,02H
+    INT 21H
+    RETF
+PRINT_CHAR ENDP
+
+NEW_LINE PROC FAR
+    PUSH AX
+    PUSH DX
+    MOV DL,0DH
+    MOV AH,02H
+    INT 21H
+    MOV DL,0AH
+    INT 21H
+    POP DX
+    POP AX
+    RETF
+NEW_LINE ENDP
+
+; Input: DX points to a '$'-terminated prompt (register parameter).
+; Output: AX=unsigned decimal number, CF=0; invalid text gives CF=1.
+READ_NUMBER PROC FAR
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+    PUSH BP
+
+    MOV AH,09H
+    INT 21H
+    XOR SI,SI                      ; accumulated value
+    XOR CX,CX                      ; digit count
+    XOR DI,DI                      ; invalid flag
+    MOV BX,10
+READ_CHAR:
+    MOV AH,01H
+    INT 21H                        ; AL=character, keyboard input is echoed
+    CMP AL,0AH
+    JE READ_CHAR                   ; ignore LF from redirected CR/LF input
+    CMP AL,0DH
+    JE READ_FINISH
+    CMP AL,'0'
+    JB MARK_INVALID
+    CMP AL,'9'
+    JA MARK_INVALID
+    SUB AL,'0'
+    XOR AH,AH
+    MOV BP,AX                      ; BP=digit
+    MOV AX,SI
+    XOR DX,DX
+    MUL BX
+    OR DX,DX
+    JNZ MARK_INVALID
+    ADD AX,BP
+    MOV SI,AX
+    INC CX
+    JMP SHORT READ_CHAR
+MARK_INVALID:
+    MOV DI,1
+    JMP SHORT READ_CHAR
+READ_FINISH:
+    OR CX,CX
+    JZ READ_FAIL
+    OR DI,DI
+    JNZ READ_FAIL
+    MOV AX,SI
+    CLC
+    JMP SHORT READ_DONE
+READ_FAIL:
+    STC
+READ_DONE:
+    POP BP
+    POP DI
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    RETF
+READ_NUMBER ENDP
+
+; Input AX, output decimal text.  Uses the stack to reverse digits.
+PRINT_UINT PROC FAR
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    XOR CX,CX
+    MOV BX,10
+DIVIDE_DIGITS:
+    XOR DX,DX
+    DIV BX
+    PUSH DX
+    INC CX
+    OR AX,AX
+    JNZ DIVIDE_DIGITS
+OUTPUT_DIGITS:
+    POP DX
+    ADD DL,'0'
+    MOV AH,02H
+    INT 21H
+    LOOP OUTPUT_DIGITS
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RETF
+PRINT_UINT ENDP
+
+UTIL_CODE ENDS
+
+MAIN_CODE SEGMENT PARA PUBLIC 'CODE'
+ASSUME CS:MAIN_CODE,DS:DATA_SEG,SS:STACK_SEG
+
+START:
+    MOV AX,DATA_SEG
+    MOV DS,AX
+
+READ_YEAR_AGAIN:
+    LEA DX,PROMPT_YEAR
+    CALL READ_NUMBER
+    JC YEAR_INVALID
+    CMP AX,1900
+    JB YEAR_INVALID
+    CMP AX,2099
+    JA YEAR_INVALID
+    MOV YEAR_VALUE,AX
+    JMP SHORT READ_MONTH_AGAIN
+YEAR_INVALID:
+    LEA DX,ERROR_YEAR
+    CALL PRINT_STRING
+    JMP READ_YEAR_AGAIN
+
+READ_MONTH_AGAIN:
+    LEA DX,PROMPT_MONTH
+    CALL READ_NUMBER
+    JC MONTH_INVALID
+    CMP AX,1
+    JB MONTH_INVALID
+    CMP AX,12
+    JA MONTH_INVALID
+    MOV MONTH_VALUE,AX
+    JMP SHORT INPUT_READY
+MONTH_INVALID:
+    LEA DX,ERROR_MONTH
+    CALL PRINT_STRING
+    JMP READ_MONTH_AGAIN
+
+INPUT_READY:
+    ; Stack parameters: PUSH year, PUSH month, then a near CALL.
+    PUSH YEAR_VALUE
+    PUSH MONTH_VALUE
+    CALL PRINT_CALENDAR
+
+    MOV AX,4C00H
+    INT 21H
+
+; Stack layout after PUSH BP:
+; [BP+4] = month, [BP+6] = year.  RET 4 removes both arguments.
+PRINT_CALENDAR PROC NEAR
+    PUSH BP
+    MOV BP,SP
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+
+    CALL NEW_LINE
+    MOV AX,[BP+6]
+    CALL PRINT_UINT
+    MOV DL,' '
+    CALL PRINT_CHAR
+    MOV BX,[BP+4]
+    DEC BX
+    SHL BX,1
+    MOV DX,MONTH_PTRS[BX]
+    CALL PRINT_STRING
+    CALL NEW_LINE
+
+    LEA DX,WEEK_HEADER
+    CALL PRINT_STRING
+
+    MOV AX,[BP+6]
+    MOV BX,[BP+4]
+    CALL CALC_FIRST_DAY
+    MOV FIRST_DAY,AX
+
+    MOV AX,[BP+6]
+    MOV BX,[BP+4]
+    CALL GET_MONTH_DAYS
+    MOV DAYS_IN_MONTH,AX
+
+    MOV CX,FIRST_DAY
+    JCXZ INDENT_DONE
+INDENT_LOOP:
+    MOV DL,' '
+    CALL PRINT_CHAR
+    CALL PRINT_CHAR
+    CALL PRINT_CHAR
+    LOOP INDENT_LOOP
+INDENT_DONE:
+    MOV SI,1                       ; day number
+    MOV DI,FIRST_DAY               ; current weekday column 0..6
+DAY_LOOP:
+    CMP SI,DAYS_IN_MONTH
+    JA CALENDAR_DONE
+    CMP SI,10
+    JAE TWO_DIGITS
+    MOV DL,' '
+    CALL PRINT_CHAR
+TWO_DIGITS:
+    MOV AX,SI
+    CALL PRINT_UINT
+    MOV DL,' '
+    CALL PRINT_CHAR
+    INC DI
+    CMP DI,7
+    JB NEXT_DAY
+    XOR DI,DI
+    CALL NEW_LINE
+NEXT_DAY:
+    INC SI
+    JMP DAY_LOOP
+
+CALENDAR_DONE:
+    OR DI,DI
+    JZ NO_FINAL_NEWLINE
+    CALL NEW_LINE
+NO_FINAL_NEWLINE:
+    POP DI
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    POP BP
+    RET 4
+PRINT_CALENDAR ENDP
+
+; Input AX=year. Output AL=1 for leap year, AL=0 otherwise.
+IS_LEAP PROC NEAR
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    MOV CX,AX
+    XOR DX,DX
+    MOV BX,400
+    DIV BX
+    OR DX,DX
+    JZ LEAP_TRUE
+    MOV AX,CX
+    XOR DX,DX
+    MOV BX,100
+    DIV BX
+    OR DX,DX
+    JZ LEAP_FALSE
+    MOV AX,CX
+    XOR DX,DX
+    MOV BX,4
+    DIV BX
+    OR DX,DX
+    JNZ LEAP_FALSE
+LEAP_TRUE:
+    MOV AL,1
+    JMP SHORT LEAP_EXIT
+LEAP_FALSE:
+    XOR AL,AL
+LEAP_EXIT:
+    POP DX
+    POP CX
+    POP BX
+    RET
+IS_LEAP ENDP
+
+; Input AX=year, BX=month. Output AX=number of days in month.
+GET_MONTH_DAYS PROC NEAR
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    MOV CX,AX
+    MOV SI,BX
+    DEC SI
+    XOR AX,AX
+    MOV AL,DAYS_TABLE[SI]
+    CMP BX,2
+    JNE MONTH_DAYS_DONE
+    PUSH AX
+    MOV AX,CX
+    CALL IS_LEAP
+    MOV CL,AL
+    POP AX
+    OR CL,CL
+    JZ MONTH_DAYS_DONE
+    INC AX
+MONTH_DAYS_DONE:
+    POP SI
+    POP CX
+    POP BX
+    RET
+GET_MONTH_DAYS ENDP
+
+; Input AX=year, BX=month. Output AX=weekday of the first day (Su=0).
+; 1900-01-01 was Monday, so the accumulator begins at 1.
+CALC_FIRST_DAY PROC NEAR
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    PUSH DI
+    MOV SI,AX                       ; target year
+    MOV DI,BX                       ; target month
+    MOV DX,1                        ; Monday
+    MOV CX,1900
+YEAR_ACCUMULATE:
+    CMP CX,SI
+    JAE MONTH_ACCUMULATE_START
+    MOV AX,CX
+    CALL IS_LEAP
+    XOR AH,AH
+    INC AX                          ; common year shifts 1, leap year 2
+    ADD DX,AX
+    CMP DX,7
+    JB YEAR_NEXT
+    SUB DX,7
+YEAR_NEXT:
+    INC CX
+    JMP YEAR_ACCUMULATE
+
+MONTH_ACCUMULATE_START:
+    MOV BX,1
+MONTH_ACCUMULATE:
+    CMP BX,DI
+    JAE FIRST_DAY_READY
+    MOV AX,SI
+    CALL GET_MONTH_DAYS
+    ADD DX,AX
+REDUCE_WEEK:
+    CMP DX,7
+    JB MONTH_NEXT
+    SUB DX,7
+    JMP SHORT REDUCE_WEEK
+MONTH_NEXT:
+    INC BX
+    JMP MONTH_ACCUMULATE
+FIRST_DAY_READY:
+    MOV FIRST_DAY,DX
+    POP DI
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    MOV AX,FIRST_DAY
+    RET
+CALC_FIRST_DAY ENDP
+
+MAIN_CODE ENDS
+END START
